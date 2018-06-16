@@ -2,7 +2,7 @@ pragma solidity 0.4.24;
 import "github.com/oraclize/ethereum-api/oraclizeAPI.sol";
 
 
-contract ERC20 {
+contract ERC20Token {
   function totalSupply() public view returns(uint256);
   function balanceOf(address who) public view returns(uint256);
   function transfer(address to, uint256 value) public returns(bool);
@@ -129,8 +129,7 @@ contract Pausable is Ownable {
 
 
 contract Crowdsale is usingOraclize, Pausable {
-  using SafeMath
-  for uint256;
+  using SafeMath for uint256;
 
   // The token being sold
   ERC20Token public token;
@@ -143,9 +142,10 @@ contract Crowdsale is usingOraclize, Pausable {
     PRE_SALE,
     SALE,
     NOT_SALING
-  };
+  }
 
   stagesOfSale public stage;
+  uint256 public rateInETH;
   uint256 public rate;
   uint256 public weiRaised;
   uint256 public USDinETH; // use oraclize
@@ -155,6 +155,7 @@ contract Crowdsale is usingOraclize, Pausable {
   uint256 public preSaleStop;
   uint256 public saleStart;
   uint256 public saleStop;
+  uint256 public updatePeriod;
 
   event TokenPurchase(
     address indexed purchaser,
@@ -163,33 +164,48 @@ contract Crowdsale is usingOraclize, Pausable {
     uint256 amount
   );
 
-  constructor(uint256 _rate, address _wallet, ERC20Token _token) public {
+  constructor(uint256 _rateInETH, address _wallet, ERC20Token _token) public {
     require(_rate > 0);
     require(_wallet != address(0));
     require(_token != address(0));
-    USDinETH = oraclize_query(60, "URL", "json(https://api.kraken.com/0/public/Ticker?pair=ETHUSD).result.XETHZUSD.c.0"); //????????????????????????????????????
-    rate = _rate.mul(USDinETH);
+    rateInETH = _rateInETH;
     wallet = _wallet;
     token = _token;
+    updatePeriod = 86400;
+    USDinETH_Update();
   }
 
-  function() external payable {
-    require(checkStage());
-    USDinETH = oraclize_query(60, "URL", "json(https://api.kraken.com/0/public/Ticker?pair=ETHUSD).result.XETHZUSD.c.0"); //??????????????????????????????????????
+  function USDinETH_Update() payable {
+    if (oraclize_getPrice("URL") > this.balance) {
+        newOraclizeQuery("Oraclize query was NOT sent, please add some ETH to cover for the query fee");
+    } else {
+      newOraclizeQuery("Oraclize query was sent, standing by for the answer..");
+      oraclize_query(updatePeriod, "URL", "json(https://api.kraken.com/0/public/Ticker?pair=ETHUSD).result.XETHZUSD.c.0");
+    }
+  }
+
+  function __callback(bytes32 myid, string result) {
+    require(msg.sender == oraclize_cbAddress());
+    USDinETH = parseInt(result);
+    rate = rateInETH.mul(USDinETH);
+    USDinETH_Update();
+  }
+
+  function() external payable whenNotPaused {
     buyTokens(msg.sender);
   }
 
-  function buyTokens(address _beneficiary) public payable {
+  function buyTokens(address _beneficiary) public payable whenNotPaused {
+    require(checkStage());
     uint256 weiAmount = msg.value;
     uint256 tokens = weiAmount.div(rate);
     tokens = getValueWithBonusPercent(tokens);
-    token.approve(_beneficiary, tokens);                                        //?????????????????????????
-    token.transferFrom(_beneficiary, value);                                    //?????????????????????????
+    token.transferFrom(owner, _beneficiary, value);                                    
     emit TokenPurchase(msg.sender, _beneficiary, weiAmount, tokens);
   }
 
   function checkStage() public returns(bool) {
-    if (now < privateSaleStart || now > privateSaleStop && now < preSaleStart || now > preSaleStop && now < saleStart || now > saleStop)
+    if (now < privateSaleStart || now > privateSaleStop && now < preSaleStart || now > preSaleStop && now < saleStart || now > saleStop) {
         stage = NOT_SALING;
         return false;
     }
@@ -209,9 +225,13 @@ contract Crowdsale is usingOraclize, Pausable {
     }
   }
 
+  function setUpdatePeriod(uint256 _updatePeriod){
+    require(_updatePeriod <= 86400);
+    updatePeriod = _updatePeriod;
+  }
+
   function setPrivateSaleDate(uint256 _start, uint256 _stop) public onlyOwner {
     require(_start > now);
-    require(_stop > now);
     require(_stop > _start);
     privateSaleStart = _start;
     privateSaleStop = _stop;
@@ -219,7 +239,6 @@ contract Crowdsale is usingOraclize, Pausable {
 
   function setPreSaleDate(uint256 _start, uint256 _stop) public onlyOwner {
     require(_start > now);
-    require(_stop > now);
     require(_stop > _start);
     preSaleStart = _start;
     preSaleStop = _stop;
@@ -227,7 +246,6 @@ contract Crowdsale is usingOraclize, Pausable {
 
   function setSaleDate(uint256 _start, uint256 _stop) public onlyOwner {
     require(_start > now);
-    require(_stop > now);
     require(_stop > _start);
     saleStart = _start;
     saleStop = _stop;
@@ -240,7 +258,7 @@ contract Crowdsale is usingOraclize, Pausable {
     } else {
       uint256 cost = tokens.mul(rate);
       if (stage == PRIVATE_SALE) {
-        if (cost > 0 && cost <= 10 * ETH) {
+        if (cost > 0 && cost <= 10 * rate) {
           return value += value.mul(20).div(100);
         }
         if (cost >= 11 * rate && cost <= 30 * rate) {
@@ -265,7 +283,4 @@ contract Crowdsale is usingOraclize, Pausable {
       }
     }
   }
-
-
-
 }
