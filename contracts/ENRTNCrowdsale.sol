@@ -127,7 +127,7 @@ contract Pausable is Ownable {
 
 
 
-contract Crowdsale is usingOraclize, Pausable {
+contract ENRTNCrowdsale is usingOraclize, Pausable {
   using SafeMath for uint256;
 
   // The token being sold
@@ -163,15 +163,14 @@ contract Crowdsale is usingOraclize, Pausable {
     uint256 amount
   );
 
-  constructor(uint256 _rateInETH, address _wallet, ERC20Token _token) public {
-    require(_rateInETH > 0);
-    require(_wallet != address(0));
+  constructor(ERC20Token _token, address _wallet) public {
     require(_token != address(0));
-    rateInETH = _rateInETH;
+    require(_wallet != address(0));
+
     wallet = _wallet;
     token = _token;
+
     updatePeriod = 86400;
-    USDinETH_Update();
   }
 
   function USDinETH_Update() public  payable {
