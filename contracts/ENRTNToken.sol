@@ -126,7 +126,7 @@ contract ERC20 {
 }
 
 
-contract ERC20Token is ERC20, Pausable {
+contract ENRTNToken is ERC20, Pausable {
   using SafeMath for uint256;
 
   address public crowdSaleContract;
