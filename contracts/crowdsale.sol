@@ -1,5 +1,5 @@
 pragma solidity 0.4.24;
-import "github.com/oraclize/ethereum-api/oraclizeAPI.sol";
+import "./usingOraclize.sol";
 
 
 contract ERC20Token {
@@ -116,7 +116,6 @@ contract Pausable is Ownable {
     paused = true;
     emit Pause();
   }
-
   /**
    * @dev called by the owner to unpause, returns to normal state
    */
@@ -165,7 +164,7 @@ contract Crowdsale is usingOraclize, Pausable {
   );
 
   constructor(uint256 _rateInETH, address _wallet, ERC20Token _token) public {
-    require(_rate > 0);
+    require(_rateInETH > 0);
     require(_wallet != address(0));
     require(_token != address(0));
     rateInETH = _rateInETH;
@@ -175,23 +174,23 @@ contract Crowdsale is usingOraclize, Pausable {
     USDinETH_Update();
   }
 
-  function USDinETH_Update() payable {
+  function USDinETH_Update() public  payable {
     if (oraclize_getPrice("URL") > this.balance) {
-        newOraclizeQuery("Oraclize query was NOT sent, please add some ETH to cover for the query fee");
+        //newOraclizeQuery("Oraclize query was NOT sent, please add some ETH to cover for the query fee");
     } else {
-      newOraclizeQuery("Oraclize query was sent, standing by for the answer..");
+      //newOraclizeQuery("Oraclize query was sent, standing by for the answer..");
       oraclize_query(updatePeriod, "URL", "json(https://api.kraken.com/0/public/Ticker?pair=ETHUSD).result.XETHZUSD.c.0");
     }
   }
 
-  function __callback(bytes32 myid, string result) {
+  function __callback(bytes32 myid, string result) public {
     require(msg.sender == oraclize_cbAddress());
     USDinETH = parseInt(result);
     rate = rateInETH.mul(USDinETH);
     USDinETH_Update();
   }
 
-  function() external payable whenNotPaused {
+  function() external payable whenNotPaused() {
     buyTokens(msg.sender);
   }
 
@@ -200,32 +199,32 @@ contract Crowdsale is usingOraclize, Pausable {
     uint256 weiAmount = msg.value;
     uint256 tokens = weiAmount.div(rate);
     tokens = getValueWithBonusPercent(tokens);
-    token.transferFrom(owner, _beneficiary, value);                                    
+    token.transferFrom(owner, _beneficiary, tokens);
     emit TokenPurchase(msg.sender, _beneficiary, weiAmount, tokens);
   }
 
   function checkStage() public returns(bool) {
     if (now < privateSaleStart || now > privateSaleStop && now < preSaleStart || now > preSaleStop && now < saleStart || now > saleStop) {
-        stage = NOT_SALING;
+        stage = stagesOfSale.NOT_SALING;
         return false;
     }
     else {
       if (now >= privateSaleStart && now <= privateSaleStop) {
-        stage = PRIVATE_SALE;
+        stage = stagesOfSale.PRIVATE_SALE;
         return true;
       }
       if (now >= preSaleStart && now <= preSaleStop) {
-        stage = PRESALE_SALE;
+        stage = stagesOfSale.PRE_SALE;
         return true;
       }
       if (now >= saleStart && now <= saleStop) {
-        stage = SALE;
+        stage = stagesOfSale.SALE;
         return true;
       }
     }
   }
 
-  function setUpdatePeriod(uint256 _updatePeriod){
+  function setUpdatePeriod(uint256 _updatePeriod) public {
     require(_updatePeriod <= 86400);
     updatePeriod = _updatePeriod;
   }
@@ -251,13 +250,13 @@ contract Crowdsale is usingOraclize, Pausable {
     saleStop = _stop;
   }
 
-  function getValueWithBonusPercent(uint256 value) returns(uint256) {
-    if (stage == NOT_SALING) return 0;
-    if (stage == SALE) {
+  function getValueWithBonusPercent(uint256 value) public view returns(uint256) {
+    if (stage == stagesOfSale.NOT_SALING) return 0;
+    if (stage == stagesOfSale.SALE) {
       return value;
     } else {
-      uint256 cost = tokens.mul(rate);
-      if (stage == PRIVATE_SALE) {
+      uint256 cost = value.mul(rate);
+      if (stage == stagesOfSale.PRIVATE_SALE) {
         if (cost > 0 && cost <= 10 * rate) {
           return value += value.mul(20).div(100);
         }
@@ -282,5 +281,51 @@ contract Crowdsale is usingOraclize, Pausable {
         }
       }
     }
+  }
+}
+
+/**
+ * @title SafeMath
+ * @dev Math operations with safety checks that throw on error
+ */
+library SafeMath {
+
+  /**
+  * @dev Multiplies two numbers, throws on overflow.
+  */
+  function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+    if (a == 0) {
+      return 0;
+    }
+    uint256 c = a * b;
+    assert(c / a == b);
+    return c;
+  }
+
+  /**
+  * @dev Integer division of two numbers, truncating the quotient.
+  */
+  function div(uint256 a, uint256 b) internal pure returns (uint256) {
+    // assert(b > 0); // Solidity automatically throws when dividing by 0
+    uint256 c = a / b;
+    // assert(a == b * c + a % b); // There is no case in which this doesn't hold
+    return c;
+  }
+
+  /**
+  * @dev Subtracts two numbers, throws on overflow (i.e. if subtrahend is greater than minuend).
+  */
+  function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+    assert(b <= a);
+    return a - b;
+  }
+
+  /**
+  * @dev Adds two numbers, throws on overflow.
+  */
+  function add(uint256 a, uint256 b) internal pure returns (uint256) {
+    uint256 c = a + b;
+    assert(c >= a);
+    return c;
   }
 }
