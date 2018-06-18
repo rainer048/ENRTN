@@ -1,5 +1,5 @@
 pragma solidity 0.4.24;
-import "./usingOraclize.sol";
+import "Lib/usingOraclize.sol";
 
 
 contract ERC20Token {
